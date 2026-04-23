@@ -1,0 +1,75 @@
+{
+  "app": {
+    "name": "pps-services-consumer-database",
+    "version": "1.0.0"
+  },
+  "log": {
+    "level": 6,
+    "output": "both",
+    "file": {
+      "path": "logs/app.log",
+      "max_size": 100,
+      "max_backups": 30,
+      "max_age": 30,
+      "compress": true
+    },
+    "telegram": {
+      "enabled": false,
+      "bot_token": "",
+      "chat_id": ""
+    }
+  },
+  "oracle": {
+    "host": "192.168.3.163",
+    "port": 2015,
+    "service": "evshop",
+    "username": "MSG",
+    "password": "RESTORE",
+    "pool": {
+      "max_open": 25,
+      "max_idle": 10,
+      "max_lifetime": 30
+    }
+  },
+  "rabbitmq": {
+    "host": "localhost",
+    "port": 5672,
+    "username": "guest",
+    "password": "guest",
+    "vhost": "/",
+    "exchange": {
+      "name": "pps.transaction",
+      "type": "direct",
+      "durable": true
+    },
+    "dead_letter": {
+      "enabled": true,
+      "exchange": "pps.transaction.dlx",
+      "suffix": ".dead",
+      "delivery_limit": 3
+    },
+    "queue_declare_mode": "lazy",
+    "startup_queues": [],
+    "consumer": {
+      "workers": 1,
+      "prefetch": 10,
+      "queue_filter": "H2H-QUEUE-SPECIAL-1",
+      "worker_restart_delay": 3,
+      "cb_poll_interval": 2
+    },
+    "reconnect": {
+      "initial_interval": 2,
+      "max_interval": 60
+    }
+  },
+  "downstream": {
+    "url": "http://localhost:8080/api/order/result",
+    "timeout": 10
+  },
+  "circuit_breaker": {
+    "max_requests": 5,
+    "interval": 60,
+    "timeout": 30,
+    "failure_threshold": 3
+  }
+}

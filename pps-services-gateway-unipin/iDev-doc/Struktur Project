@@ -1,0 +1,288 @@
+Struktur Project pps-services-gateway-unipin
+Project ini adalah HTTP client library (Go) yang jadi gateway ke Unipin API. 
+Bukan HTTP server, tapi murni outbound client — dia nge-call API Unipin untuk 
+keperluan in-game topup dan voucher. Saat ini main.go cuma demo/runner 
+sederhana yang manggil GameList.
+
+"
+    pps-services-gateway-unipin/
+    ├── cmd/app/main.go              ← Entry point (runner/demo)
+    ├── internal/config/config.go    ← Load env vars (BASE_URL, PARTNER_ID, SECRET_KEY, TIMEOUT)
+    ├── pkg/unipin/
+    │   ├── client.go                ← HTTP client + auth helper + retry logic
+    │   ├── types.go                 ← Error types (BusinessError, TechnicalError)
+    │   ├── ingame_types.go          ← Request/Response structs untuk In-Game Topup
+    │   ├── ingame_game_list.go      ← GET daftar game
+    │   ├── ingame_game_detail.go    ← GET detail game + denomination
+    │   ├── ingame_validate_user.go  ← Validasi user game
+    │   ├── ingame_create_order.go   ← Buat order topup
+    │   ├── ingame_order_inquiry.go  ← Cek status order
+    │   ├── voucher_types.go         ← Request/Response structs untuk Voucher
+    │   ├── voucher_list.go          ← GET daftar voucher
+    │   ├── voucher_detail.go        ← GET detail voucher
+    │   ├── voucher_stock.go         ← Cek stok voucher
+    │   ├── voucher_request.go       ← Beli/request voucher
+    │   └── voucher_inquiry.go       ← Cek status pembelian voucher
+"
+
+
+Alur Coding dari Start ke Finish
+
+1.  Startup (main.go)
+    Set timezone ke Asia/Jakarta
+    Init structured logger (slog JSON format)
+    Load config dari environment variables via config.Load()
+    BASE_URL — base URL Unipin API
+    PARTNER_ID — partner ID kamu
+    SECRET_KEY — secret key untuk auth
+    TIMEOUT — timeout dalam detik (default 30s)
+2.  Init Client (client.go)
+    unipin.NewClient(baseURL, partnerID, secretKey, timeout, logger) bikin HTTP client
+    Client nyimpen semua credential + http.Client dengan timeout
+    Default retry: 2x retry (total 3 attempts) dengan backoff 300ms
+3.  Authentication — 2 Mekanisme Berbeda
+    In-Game Topup pakai HMAC-SHA256:
+
+    "auth = HMAC-SHA256(partnerID + timestamp + path, secretKey)"
+
+    Dikirim via HTTP headers: partnerid, timestamp, path, auth
+    Voucher pakai SHA-256 hash:
+
+    "signature = SHA256(partner_guid + logid + secret)"
+
+    Dikirim di request body sebagai field signature
+
+4. Setiap API Call Punya Pola yang Sama
+
+    "
+        Validasi input
+            ↓
+        Generate auth/signature
+            ↓
+        Marshal request body (JSON)
+            ↓
+        Retry loop (max 3 attempts):
+            ├── Buat HTTP request dengan context + timeout
+            ├── Set headers (Content-Type, auth headers)
+            ├── Log outgoing request
+            ├── Execute HTTP call
+            ├── Log incoming response + duration
+            ├── Handle error:
+            │   ├── 5xx → TechnicalError (retryable)
+            │   ├── 4xx → TechnicalError (not retryable)
+            │   ├── Network/timeout → TechnicalError (retryable)
+            │   └── Business error (status != 1) → BusinessError (not retryable)
+            └── Unmarshal JSON response
+            ↓
+        Return typed response
+    "
+
+5. Fitur yang Tersedia
+    
+    In-Game Topup flow (urutan bisnis):
+    1. GameList() — ambil daftar game yang tersedia
+    2. GameDetail(gameCode) — ambil detail game + denomination (harga)
+    3. ValidateUser(req) — validasi user ID game, dapet validation_token
+    4. CreateOrder(req) — buat order topup pakai token + denomination
+    5. OrderInquiry(referenceNo) — cek status order
+
+    Voucher flow (urutan bisnis):
+    1. VoucherList() — ambil daftar voucher
+    2. VoucherDetail(voucherCode) — ambil detail + denomination voucher
+    3. VoucherStock() — cek stok voucher
+    4. VoucherRequest(req) — beli voucher, dapet serial/pin
+    5. VoucherInquiry(referenceNo) — cek status pembelian
+
+6. Error Handling
+Dua tipe error yang jelas:
+
+BusinessError — dari Unipin (misal: user not found, invalid game code). Tidak di-retry.
+TechnicalError — network issue, timeout, 5xx. Di-retry otomatis dengan exponential backoff.
+
+
+
+
+*) Flow Design "DIRECT TOP-UP (General)"
+Mitra PPS → H2H NginX Payment → SELL
+                                  ↓
+                        ┌─── Direct Top-Up (General) → Publisher → MQ → Consumer (General)
+                        │                                              ↓
+                        │                                      Publisher Provider
+                        │                                              ↓
+                        │                                       RabbitMQ Provider
+                        │                                              ↓
+                        │                                  Consumer Unipin ──→ Unipin
+                        │                                         	   ↑
+                        │                                         	   │
+                        └─── Get Game List ──────────→ 3.16 (Authentication & Game List) ──→ Unipin
+                                                        ↑
+                                                     Developt
+
+
+Mitra PPS
+  │
+  ↓ (1)
+H2H NginX Payment
+  │
+  ↓ (2)
+SELL ──→ Direct Top-Up
+  │
+  ├── General Path:
+  │     │
+  │     ↓ (1)
+  │   Publisher (General)
+  │     │
+  │     ↓ (2)
+  │   MQ (General)
+  │     │
+  │     ↓ (3)
+  │   Consumer (General)          ← proses awal (validasi, pre-order, dll)
+  │     │
+  │     ↓ (4)
+  │   Publisher Provider          ← publish event ke queue provider
+  │     │
+  │     ↓ (5)
+  │   RabbitMQ Provider
+  │     │
+  │     ├──→ Consumer Unipin       ← consume, lalu call gateway unipin
+  │     │       │
+  │     │       ↓ (6)
+  │     │     3.16 (Auth & Game List)  ← 🟢 INI SERVICE LO
+  │     │       │
+  │     │       ↓ (7)
+  │     │     Unipin API (external)
+  │     │
+  │     └──→ Consumer Tsel
+  │             │
+  │             ↓
+  │           Telkomsel API
+  │
+  └── Special Path:
+        (sama tapi lewat MQ Special → Consumer Special → ...)
+
+
+FLOW SETELAH DAPAT RESPONSE DARI UNIPIN:
+
+Unipin API
+  │
+  ↓ (8)
+3.16 (Auth & Game List)            ← response balik ke service lo
+  │
+  ↓ (8A)
+Consumer Unipin                    ← dapet result
+  │
+  ├──→ (9) RabbitMQ Database (Per queue)
+  │         │
+  │         ↓ (12)
+  │       Consumer Database
+  │         │
+  │         ↓ (13)
+  │       3.16 (Order) ← update order status
+  │
+  ├──→ (9B) MQ Retry (kalau gagal)
+  │         │
+  │         ↓ (9B)
+  │       Postgre SQL (log retry)
+  │
+  └──→ (10) Publisher Database
+              │
+              ↓ (11A)
+            Publisher Database → DB
+              │
+              ↓ (11B)
+            Postgre SQL
+
+
+FLOW GET GAME LIST (terpisah, lebih simple):
+
+Mitra PPS
+  │
+  ↓
+Get Game List
+  │
+  ↓
+3.16 (Auth & Game List)  ← 🟢 SERVICE LO JUGA
+  │
+  ↓
+Unipin API
+  │
+  ↓
+Return game list ke caller
+
+
+FLOW CHECK STATUS:
+
+Mitra PPS
+  │
+  ↓
+Check Status
+  │
+  ├── General → Publisher → 3.16 (Order) → return status
+  └── Special → Publisher → 3.16 (Order) → return status
+
+
+
+  ===========================================================================================
+
+  *) My Struktur Project
+
+pps-services-gateway-unipin/
+├── cmd/app/main.go                          ← Entry point (wiring semua layer)
+├── config.json                              ← Config file (unipin + rabbitmq + log + CB)
+├── internal/
+│   ├── config/
+│   │   ├── viper.go                         ← Load config.json
+│   │   ├── zerolog.go                       ← Logger + PII masking + Telegram notif
+│   │   ├── validator.go                     ← Validator instance
+│   │   └── rabbitmq.go                      ← RabbitMQ connection + auto-reconnect
+│   ├── model/
+│   │   └── event.go                         ← TopupEvent (consume) + TopupResult (publish)
+│   ├── gateway/messaging/
+│   │   ├── interfaces.go                    ← RabbitMQProvider + MessageHandler interfaces
+│   │   ├── consumer.go                      ← RabbitMQ consumer + circuit breaker
+│   │   └── publisher.go                     ← RabbitMQ publisher (publish result ke DB queue)
+│   ├── usecase/
+│   │   └── topup_usecase.go                 ← Business logic: validate → create order → publish
+│   └── pkg/logger/
+│       └── logger.go                        ← ContextLogger + Telegram + PII masking
+├── pkg/unipin/                              ← (sudah ada) Unipin API client library
+
+
+
+*) Warsito ORACLE
+MSG.PKG_UNIPIN.INSUPDGAMELIST (
+    INID                   => 1,
+    INGAMECODE             => 'test',
+    INGAMEDESC             => 'testdesc',
+    INGAMECATEGORY         => 'mlbb',
+    INGAMEDENOMINATIONID   => 123,
+    INGAMENAME             => 'mobellegen',
+    INGAMECURRENCY         => 'IDR',
+    INGAMEAMOUNT           => 1000000,
+    INGAMEFIELDREQUEST     => '{hadeeh:namanya orang dagang ya}',
+    INKODEVOUCHER          => 'MLBB',
+    INPROVIDER             => 'UNIPIN',
+    OUTERRCODE             => var_OUTERRCODE,
+    OUTERRMSG              => var_OUTERRMSG
+);
+
+
+--------------------------------------------------------------------------------------------------------------
+Method      Endpoint	                                          |   Fungsi
+--------------------------------------------------------------------------------------------------------------
+GET	        /health	                                            |   Health check
+GET	        /api/v1/ingame/list	                                |   Get game list dari Unipin
+GET	        /api/v1/ingame/detail?game_code=XXX	                |   Get game detail + denominations
+                                                                |
+POST        /api/v1/ingame/sync/MLBBD_ID/324		                |   Insert 1 denomination spesifik
+            /api/v1/ingame/sync/:game_code/:denomination_id     |
+                                                                |
+POST        /api/v1/ingame/sync/MLBBD_ID			                  |   Insert semua denomination dari 1 game
+POST        /api/v1/ingame/sync					                        |   Insert semua game + semua denomination
+
+
+# Game list
+curl http://localhost:8080/api/v1/ingame/list
+
+# Game detail
+curl "http://localhost:8080/api/v1/ingame/detail?game_code=MLBBD_ID"

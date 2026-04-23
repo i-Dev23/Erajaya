@@ -1,0 +1,41 @@
+system_type,error_pattern,response_code
+oracle,"H2H - Error : '||vCutOffErrMessage",61
+oracle,"Error 02 : Signature tidak benar, komponen tidak syah.",32
+oracle,"Kode voucher is not found",14
+oracle,"Error 01 : Signature tidak benar.",32
+oracle,"Sell Error 02 : IP belum di setting.",60
+oracle,"Sell Error 02 : IP Anda '|| p_ip ||' tidak sama dengan Settingan ",60
+oracle,"Sell Error 02 : queue setting is not ready",60
+oracle,"Anda tidak diperkenankan transaksi lewat WEB, hubungi admin kami untuk merubah profile anda.",60
+oracle,"Kode Voucher '||KDV||' tidak tersedia untuk Account Anda.",14
+oracle,"4. Harga jual belum di setting untuk anda.",44
+oracle,"Deposit anda kurang untuk memenuhi penjualan.",43
+oracle,"Stock Voucher '||KDV||' habis, transaksi kami batalkan.",50
+oracle,"Fee Amount untuk '||KDV||' belum disetting",44
+oracle,"H2H - Error : '||vCutOffErrMessage",61
+oracle,"Error 02 : Signature tidak benar, komponen tidak syah.",32
+oracle,"Kode voucher is not found",14
+oracle,"Error 01 : Signature tidak benar.",32
+oracle,"Sell Error 02 : IP belum di setting.",60
+oracle,"Sell Error 02 : IP Anda '|| p_ip ||' tidak sama dengan Settingan ",60
+oracle,"No Transaksi '||p_notrx||' tidak ditemukan.",12
+oracle,"Kode voucher is not found",14
+ultima,"cut-off",63
+ultima,"yang anda masukkan salah",20
+ultima,"kwh melebihi batas maksimum",23
+ultima,"no payment",12
+ultima,"failed system (timeout)",41
+ultima,"sistem sedang kendala",64
+ultima,"[0024] produk dan nomor tujuan tidak sesuai",20
+ultima,"[0070] produk CutOff",61
+ultima,"[0070] system CutOff",63
+ultima,"[0072] Produk gangguan",51
+ultima,"panjang nomor tujuan tidak sesuai",20
+ultima,"TRX GAGAL:IDPEL YANG ANDA MASUKKAN SALAH, MOHON TELITI KEMBALI",20
+ultima,"TRX GAGAL:NOMOR METER YANG ANDA MASUKKAN SALAH, MOHON TELITI KEMBALI",20
+ultima,"TRX GAGAL:NOMOR METER/IDPEL YANG ANDA MASUKKAN SALAH, MOHON TELITI KEMBALI",20
+ultima,"GANGGUAN OPERATOR / SISTEM SEDANG KENDALA",64
+ultima,"DIBLOKIR HUBUNGI PLN",21
+ultima,"TRX GAGAL:MLPO INTERNAL SYSTEM ERROR",64
+ultima,"TRX GAGAL:NOT ENOUGH CUSTOMER ACCOUNT BALANCE",43
+ultima,"TRX GAGAL:SERVICE PROVIDER INTERNAL SYSTEM ERROR",64

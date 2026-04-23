@@ -1,0 +1,13 @@
+# Ignore init logs directory
+init-logs/
+
+# Ignore backup files
+*.sql.backup
+*.dump
+backup_*.sql
+backup_*.dump
+postgres_backup.tar.gz
+
+# Ignore temporary files
+*.tmp
+*.log

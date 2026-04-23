@@ -1,0 +1,7 @@
+@Library('jenkins-shared-library') _
+
+CICDPipeline([
+    team: 'erp-pos-development',
+    product: 'pps-provider',
+    pre_build: 'no'
+])

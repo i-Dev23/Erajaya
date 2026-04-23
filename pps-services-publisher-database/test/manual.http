@@ -1,0 +1,118 @@
+### Variables
+@host = http://localhost:3000
+@apiKey = pps-secret-api-key-change-me
+
+### ============================================================
+### Health Check (public, tanpa API key)
+### ============================================================
+
+GET {{host}}/health
+
+### ============================================================
+### Submit Callback - Single biller
+### ============================================================
+
+POST {{host}}/api/callback
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "msg_id": 40444906,
+  "status_to_be": "S",
+  "serial_number": "SN-20260401-001",
+  "client_number": "08112233445",
+  "nominal": "15000",
+  "original_conversation_id": "40444906",
+  "conversation_id": "40444906",
+  "message_to_customer": "Pengisian Voucher sebesar 15000 ke nomor 08112233445 berhasil",
+  "additional_message": "",
+  "queue_name": "biller-telkomsel-1",
+  "source": "callback-telkomsel"
+}
+
+### ============================================================
+### Submit Callback - Biller berbeda (queue_name berbeda)
+### ============================================================
+
+POST {{host}}/api/callback
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "msg_id": 40444907,
+  "status_to_be": "S",
+  "serial_number": "SN-20260401-002",
+  "client_number": "08199887766",
+  "nominal": "50000",
+  "original_conversation_id": "40444907",
+  "conversation_id": "40444907",
+  "message_to_customer": "Pembayaran PLN berhasil",
+  "additional_message": "Token: 1234-5678-9012-3456",
+  "queue_name": "biller-pln",
+  "source": "callback-pln"
+}
+
+### ============================================================
+### Submit Callback - Status gagal
+### ============================================================
+
+POST {{host}}/api/callback
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "msg_id": 40444908,
+  "status_to_be": "F",
+  "serial_number": "",
+  "client_number": "08155667788",
+  "nominal": "25000",
+  "original_conversation_id": "40444908",
+  "conversation_id": "40444908",
+  "message_to_customer": "Transaksi gagal, saldo tidak mencukupi",
+  "additional_message": "RC: 68",
+  "queue_name": "biller-telkomsel-2",
+  "source": "callback-telkomsel"
+}
+
+### ============================================================
+### Negative: Tanpa API Key (expect 401)
+### ============================================================
+
+POST {{host}}/api/callback
+Content-Type: application/json
+
+{
+  "msg_id": 1,
+  "status_to_be": "S",
+  "queue_name": "biller-test"
+}
+
+### ============================================================
+### Negative: API Key salah (expect 401)
+### ============================================================
+
+POST {{host}}/api/callback
+Content-Type: application/json
+X-API-Key: wrong-key
+
+{
+  "msg_id": 1,
+  "status_to_be": "S",
+  "queue_name": "biller-test"
+}
+
+### ============================================================
+### Negative: Body tidak valid (expect 400)
+### ============================================================
+
+POST {{host}}/api/callback
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+not-a-json
+
+### ============================================================
+### Swagger UI (buka di browser)
+### ============================================================
+
+GET {{host}}/swagger/index.html

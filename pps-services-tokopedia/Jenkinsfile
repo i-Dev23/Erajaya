@@ -1,0 +1,5 @@
+@Library('jenkins-shared-library') _
+
+CICDPipeline([
+    product: 'pps-h2h'
+])

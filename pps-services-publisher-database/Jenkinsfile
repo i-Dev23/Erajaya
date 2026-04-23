@@ -1,0 +1,7 @@
+@Library('jenkins-shared-library') _
+
+CICDPipeline([
+    team: 'erp-pos-development',
+    product: 'azec-go-services',
+    pre_build: 'no'
+])
