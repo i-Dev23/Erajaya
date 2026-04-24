@@ -102,6 +102,20 @@ func main() {
 			os.Exit(1)
 		}
 		logger.Info("transaction migration completed")
+
+		// Initialize API Log Repository (schema: log_smb)
+		apiLogRepo := postgres.NewAPILogRepositoryImpl(pgLogger.DB(), logger)
+		apiLogMigCtx, apiLogMigCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer apiLogMigCancel()
+		if err := apiLogRepo.RunMigration(apiLogMigCtx); err != nil {
+			logger.Error("failed to run api log migration", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("api log migration completed (schema: log_smb)")
+
+		// Wire API logger adapter to SMB HTTP client
+		apiLoggerAdapter := postgres.NewAPILoggerAdapter(apiLogRepo, logger)
+		smbHTTPClient.SetAPILogger(apiLoggerAdapter)
 	}
 
 	// Initialize MQ Publisher for downstream RabbitMQ publishing

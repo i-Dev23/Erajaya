@@ -11,21 +11,16 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// Compile-time interface compliance check.
 var _ contractsvc.MQPublisher = (*AMQPPublisher)(nil)
 
-// AMQPPublisher mengimplementasikan MQPublisher menggunakan amqp091-go.
 type AMQPPublisher struct {
 	logger contractsvc.Logger
 }
 
-// NewAMQPPublisher membuat instance baru AMQPPublisher.
 func NewAMQPPublisher(logger contractsvc.Logger) *AMQPPublisher {
 	return &AMQPPublisher{logger: logger}
 }
 
-// Publish membuka koneksi baru ke mqTransactionURL, publish body ke queueName.
-// Koneksi dan channel ditutup setelah publish selesai.
 func (p *AMQPPublisher) Publish(ctx context.Context, mqTransactionURL string, queueName string, body []byte) error {
 	if strings.TrimSpace(mqTransactionURL) == "" {
 		return fmt.Errorf("mq_transaction URL is empty")
@@ -46,8 +41,6 @@ func (p *AMQPPublisher) Publish(ctx context.Context, mqTransactionURL string, qu
 	}
 	defer ch.Close()
 
-	// Do not declare the queue here.
-	// Queues are expected to be provisioned by infrastructure/consumer.
 	returns := ch.NotifyReturn(make(chan amqp.Return, 1))
 
 	err = ch.PublishWithContext(ctx, "", queueName, true, false, amqp.Publishing{
