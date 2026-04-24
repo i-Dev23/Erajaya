@@ -72,16 +72,13 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// Initialize SMB client
 	smbHTTPClient := smb.NewClient(smbCfg.BaseURL, smbCfg.PartnerID, smbCfg.SecretKey, smbCfg.Timeout, slogLogger)
 	smbAdapter := smbclient.NewAdapter(smbHTTPClient, logger)
 
-	// Initialize RabbitMQ consumer
 	consumer := rabbitmq.NewConsumerServiceImpl(cfg, logger)
 	consumer.SetSMBClient(smbAdapter)
 	consumer.SetRetryConfig(retryConfig)
 
-	// Initialize TransactionLogger if PostgresDSN is configured
 	var txLogger contractsvc.TransactionLogger
 	if cfg.PostgresDSN != "" {
 		pgLogger, err := postgres.NewTransactionLogger(cfg.PostgresDSN, logger)
@@ -94,7 +91,6 @@ func main() {
 		txLogger = pgLogger
 		consumer.SetTransactionLogger(txLogger)
 
-		// Run auto-migration
 		migCtx, migCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer migCancel()
 		if err := pgLogger.RunMigration(migCtx); err != nil {
@@ -102,13 +98,25 @@ func main() {
 			os.Exit(1)
 		}
 		logger.Info("transaction migration completed")
+
+		// Initialize API Log Repository (schema: log_smb)
+		apiLogRepo := postgres.NewAPILogRepositoryImpl(pgLogger.DB(), logger)
+		apiLogMigCtx, apiLogMigCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer apiLogMigCancel()
+		if err := apiLogRepo.RunMigration(apiLogMigCtx); err != nil {
+			logger.Error("failed to run api log migration", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("api log migration completed (schema: log_smb)")
+
+		// Wire API logger adapter to SMB HTTP client
+		apiLoggerAdapter := postgres.NewAPILoggerAdapter(apiLogRepo, logger)
+		smbHTTPClient.SetAPILogger(apiLoggerAdapter)
 	}
 
-	// Initialize MQ Publisher for downstream RabbitMQ publishing
 	mqPub := mqpublisher.NewAMQPPublisher(logger)
 	consumer.SetMQPublisher(mqPub)
 
-	// Initialize HTTP server (health check)
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		ReadTimeout:           cfg.ReadTimeout,
@@ -118,24 +126,20 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok", "service": "pps-services-gateway-smb"})
 	})
 
-	// Start with errgroup
 	g, gCtx := errgroup.WithContext(ctx)
 
-	// HTTP server
 	g.Go(func() error {
 		addr := fmt.Sprintf(":%d", httpCfg.Port)
 		logger.Info("starting HTTP server", "addr", addr)
 		return app.Listen(addr)
 	})
 
-	// Graceful shutdown for HTTP
 	g.Go(func() error {
 		<-gCtx.Done()
 		logger.Info("shutting down HTTP server")
 		return app.ShutdownWithTimeout(10 * time.Second)
 	})
 
-	// RabbitMQ consumer
 	g.Go(func() error {
 		return consumer.Start(gCtx)
 	})
@@ -148,7 +152,6 @@ func main() {
 	logger.Info("service stopped gracefully")
 }
 
-// slogLoggerAdapter adapts slog.Logger to contractsvc.Logger.
 type slogLoggerAdapter struct {
 	l *slog.Logger
 }

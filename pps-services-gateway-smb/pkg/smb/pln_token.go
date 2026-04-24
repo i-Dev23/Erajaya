@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
-// InquiryPLNToken melakukan inquiry PLN Token ke SMB API.
-// Endpoint: POST {baseURL}/api/v1/pln-prepaid/inquiry
 func (c *Client) InquiryPLNToken(ctx context.Context, clientNumber, productCode string) (*InquiryResponse, []byte, error) {
 	sign := c.generateSignature(clientNumber)
 
@@ -33,8 +32,11 @@ func (c *Client) InquiryPLNToken(ctx context.Context, clientNumber, productCode 
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	start := time.Now()
 	resp, err := c.client.Do(req)
+	durationMs := int(time.Since(start).Milliseconds())
 	if err != nil {
+		c.logAPICall(ctx, "/api/v1/pln-prepaid/inquiry", http.MethodPost, clientNumber, url, bodyBytes, nil, 0, durationMs, "", "", err.Error(), "NETWORK")
 		return nil, nil, fmt.Errorf("execute inquiry request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -46,8 +48,11 @@ func (c *Client) InquiryPLNToken(ctx context.Context, clientNumber, productCode 
 
 	var inquiryResp InquiryResponse
 	if err := json.Unmarshal(rawBody, &inquiryResp); err != nil {
+		c.logAPICall(ctx, "/api/v1/pln-prepaid/inquiry", http.MethodPost, clientNumber, url, bodyBytes, rawBody, resp.StatusCode, durationMs, "", "", err.Error(), "PARSE")
 		return nil, rawBody, fmt.Errorf("unmarshal inquiry response: %w", err)
 	}
+
+	c.logAPICall(ctx, "/api/v1/pln-prepaid/inquiry", http.MethodPost, clientNumber, url, bodyBytes, rawBody, resp.StatusCode, durationMs, inquiryResp.ResponseCode, inquiryResp.Message, "", "")
 
 	c.logger.Info("SMB PLN Token inquiry completed",
 		"client_number", clientNumber,
@@ -57,8 +62,6 @@ func (c *Client) InquiryPLNToken(ctx context.Context, clientNumber, productCode 
 	return &inquiryResp, rawBody, nil
 }
 
-// PaymentPLNToken melakukan payment PLN Token ke SMB API.
-// Endpoint: POST {baseURL}/api/v1/pln-prepaid/payment
 func (c *Client) PaymentPLNToken(ctx context.Context, clientNumber, productCode, refID string, totalAmount float64) (*PaymentResponse, []byte, error) {
 	sign := c.generateSignature(refID)
 
@@ -83,8 +86,11 @@ func (c *Client) PaymentPLNToken(ctx context.Context, clientNumber, productCode,
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	start := time.Now()
 	resp, err := c.client.Do(req)
+	durationMs := int(time.Since(start).Milliseconds())
 	if err != nil {
+		c.logAPICall(ctx, "/api/v1/pln-prepaid/payment", http.MethodPost, clientNumber, url, bodyBytes, nil, 0, durationMs, "", "", err.Error(), "NETWORK")
 		return nil, nil, fmt.Errorf("execute payment request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -96,8 +102,11 @@ func (c *Client) PaymentPLNToken(ctx context.Context, clientNumber, productCode,
 
 	var paymentResp PaymentResponse
 	if err := json.Unmarshal(rawBody, &paymentResp); err != nil {
+		c.logAPICall(ctx, "/api/v1/pln-prepaid/payment", http.MethodPost, clientNumber, url, bodyBytes, rawBody, resp.StatusCode, durationMs, "", "", err.Error(), "PARSE")
 		return nil, rawBody, fmt.Errorf("unmarshal payment response: %w", err)
 	}
+
+	c.logAPICall(ctx, "/api/v1/pln-prepaid/payment", http.MethodPost, clientNumber, url, bodyBytes, rawBody, resp.StatusCode, durationMs, paymentResp.ResponseCode, paymentResp.Message, "", "")
 
 	c.logger.Info("SMB PLN Token payment completed",
 		"client_number", clientNumber,
@@ -108,8 +117,6 @@ func (c *Client) PaymentPLNToken(ctx context.Context, clientNumber, productCode,
 	return &paymentResp, rawBody, nil
 }
 
-// AdvicePLNToken melakukan advice/check status PLN Token ke SMB API.
-// Endpoint: POST {baseURL}/api/v1/pln-prepaid/advice
 func (c *Client) AdvicePLNToken(ctx context.Context, clientNumber, refID string) (*AdviceResponse, []byte, error) {
 	sign := c.generateSignature(refID)
 
@@ -132,8 +139,11 @@ func (c *Client) AdvicePLNToken(ctx context.Context, clientNumber, refID string)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	start := time.Now()
 	resp, err := c.client.Do(req)
+	durationMs := int(time.Since(start).Milliseconds())
 	if err != nil {
+		c.logAPICall(ctx, "/api/v1/pln-prepaid/advice", http.MethodPost, clientNumber, url, bodyBytes, nil, 0, durationMs, "", "", err.Error(), "NETWORK")
 		return nil, nil, fmt.Errorf("execute advice request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -145,8 +155,11 @@ func (c *Client) AdvicePLNToken(ctx context.Context, clientNumber, refID string)
 
 	var adviceResp AdviceResponse
 	if err := json.Unmarshal(rawBody, &adviceResp); err != nil {
+		c.logAPICall(ctx, "/api/v1/pln-prepaid/advice", http.MethodPost, clientNumber, url, bodyBytes, rawBody, resp.StatusCode, durationMs, "", "", err.Error(), "PARSE")
 		return nil, rawBody, fmt.Errorf("unmarshal advice response: %w", err)
 	}
+
+	c.logAPICall(ctx, "/api/v1/pln-prepaid/advice", http.MethodPost, clientNumber, url, bodyBytes, rawBody, resp.StatusCode, durationMs, adviceResp.ResponseCode, adviceResp.Message, "", "")
 
 	c.logger.Info("SMB PLN Token advice completed",
 		"client_number", clientNumber,
@@ -155,4 +168,25 @@ func (c *Client) AdvicePLNToken(ctx context.Context, clientNumber, refID string)
 		"message", adviceResp.Message)
 
 	return &adviceResp, rawBody, nil
+}
+
+// logAPICall is a helper that logs API calls if an APILogger is configured.
+func (c *Client) logAPICall(ctx context.Context, endpoint, method, clientNumber, requestURL string, requestBody, responseBody []byte, responseStatusCode, durationMs int, statusCode, statusDesc, errorMessage, errorType string) {
+	if c.apiLogger == nil {
+		return
+	}
+	c.apiLogger.Log(ctx, APICallLog{
+		Endpoint:           endpoint,
+		Method:             method,
+		ClientNumber:       clientNumber,
+		RequestURL:         requestURL,
+		RequestBody:        requestBody,
+		ResponseStatusCode: responseStatusCode,
+		ResponseBody:       responseBody,
+		ResponseDurationMs: durationMs,
+		StatusCode:         statusCode,
+		StatusDesc:         statusDesc,
+		ErrorMessage:       errorMessage,
+		ErrorType:          errorType,
+	})
 }

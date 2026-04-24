@@ -48,7 +48,6 @@ func TestProviderPublishMessage_JSONFormat(t *testing.T) {
 		t.Fatalf("marshal error: %v", err)
 	}
 
-	// Verify it can be unmarshalled back
 	var parsed ProviderPublishMessage
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		t.Fatalf("unmarshal error: %v", err)
@@ -64,7 +63,6 @@ func TestProviderPublishMessage_JSONFormat(t *testing.T) {
 		t.Errorf("expected C, got %s", parsed.Data.StatusToBe)
 	}
 
-	// Verify JSON has correct field names
 	var raw map[string]json.RawMessage
 	json.Unmarshal(body, &raw)
 

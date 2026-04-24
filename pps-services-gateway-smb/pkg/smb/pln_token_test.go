@@ -15,10 +15,6 @@ func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 }
 
-// ═══════════════════════════════════════════════════════════════
-// InquiryPLNToken
-// ═══════════════════════════════════════════════════════════════
-
 func TestInquiryPLNToken_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/pln-prepaid/inquiry" {
@@ -31,7 +27,6 @@ func TestInquiryPLNToken_Success(t *testing.T) {
 			t.Errorf("unexpected content-type: %s", r.Header.Get("Content-Type"))
 		}
 
-		// Verify request body
 		var req InquiryRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		if req.ClientNumber != "12345678901" {
@@ -133,10 +128,6 @@ func TestInquiryPLNToken_InvalidJSON(t *testing.T) {
 	}
 }
 
-// ═══════════════════════════════════════════════════════════════
-// PaymentPLNToken
-// ═══════════════════════════════════════════════════════════════
-
 func TestPaymentPLNToken_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/pln-prepaid/payment" {
@@ -213,10 +204,6 @@ func TestPaymentPLNToken_ServerDown(t *testing.T) {
 	}
 }
 
-// ═══════════════════════════════════════════════════════════════
-// AdvicePLNToken
-// ═══════════════════════════════════════════════════════════════
-
 func TestAdvicePLNToken_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/pln-prepaid/advice" {
@@ -282,10 +269,6 @@ func TestAdvicePLNToken_ServerDown(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 }
-
-// ═══════════════════════════════════════════════════════════════
-// Signature
-// ═══════════════════════════════════════════════════════════════
 
 func TestGenerateSignature(t *testing.T) {
 	client := NewClient("http://localhost", "PARTNER1", "SECRET1", 5*time.Second, newTestLogger())

@@ -10,10 +10,6 @@ import (
 	contractsvc "pps-services-gateway-smb/internal/domain/contract/service"
 )
 
-// ═══════════════════════════════════════════════════════════════
-// Mock SMB Client
-// ═══════════════════════════════════════════════════════════════
-
 type mockSMBClient struct {
 	inquiryFunc func(ctx context.Context, req contractsvc.PLNTokenInquiryRequest) (*contractsvc.PLNTokenInquiryResponse, error)
 	paymentFunc func(ctx context.Context, req contractsvc.PLNTokenPaymentRequest) (*contractsvc.PLNTokenPaymentResponse, error)
@@ -30,19 +26,11 @@ func (m *mockSMBClient) AdvicePLNToken(ctx context.Context, req contractsvc.PLNT
 	return m.adviceFunc(ctx, req)
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Mock Logger (no-op)
-// ═══════════════════════════════════════════════════════════════
-
 type mockLogger struct{}
 
 func (m *mockLogger) Info(msg string, kv ...any)  {}
 func (m *mockLogger) Warn(msg string, kv ...any)  {}
 func (m *mockLogger) Error(msg string, kv ...any) {}
-
-// ═══════════════════════════════════════════════════════════════
-// Tests: ProcessTransaction
-// ═══════════════════════════════════════════════════════════════
 
 func TestProcessTransaction_InquirySuccess_PaymentSuccess(t *testing.T) {
 	client := &mockSMBClient{
@@ -203,10 +191,6 @@ func TestProcessTransaction_PaymentNetworkError(t *testing.T) {
 	}
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Tests: RetryAdvice
-// ═══════════════════════════════════════════════════════════════
-
 func TestRetryAdvice_SuccessOnFirstAttempt(t *testing.T) {
 	client := &mockSMBClient{
 		adviceFunc: func(ctx context.Context, req contractsvc.PLNTokenAdviceRequest) (*contractsvc.PLNTokenAdviceResponse, error) {
@@ -345,7 +329,7 @@ func TestRetryAdvice_ContextCancelled(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately
+	cancel()
 
 	retryCfg := &config.RetryConfig{MaxAttempts: 3, WaitDuration: 10 * time.Millisecond}
 	uc := NewUsecase(client, retryCfg, &mockLogger{})

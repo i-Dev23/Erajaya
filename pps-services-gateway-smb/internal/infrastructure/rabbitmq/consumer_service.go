@@ -10,7 +10,6 @@ import (
 	contractsvc "pps-services-gateway-smb/internal/domain/contract/service"
 )
 
-// consumePayload merepresentasikan pesan yang dikonsumsi dari RabbitMQ.
 type consumePayload struct {
 	Amount        int
 	ProductCode   string
@@ -20,7 +19,7 @@ type consumePayload struct {
 	ClientNumber  string
 	MsgID         string
 	Command       string
-	MQTransaction string // RabbitMQ URL untuk update status transaksi via MQ
+	MQTransaction string
 }
 
 func (p *consumePayload) UnmarshalJSON(data []byte) error {
@@ -45,7 +44,6 @@ func (p *consumePayload) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ConsumerServiceImpl mengimplementasikan RabbitMQ consumer untuk gateway SMB.
 type ConsumerServiceImpl struct {
 	cfg               *config.Config
 	logger            contractsvc.Logger
@@ -55,26 +53,20 @@ type ConsumerServiceImpl struct {
 	transactionLogger contractsvc.TransactionLogger
 }
 
-// NewConsumerServiceImpl membuat instance baru ConsumerServiceImpl.
 func NewConsumerServiceImpl(cfg *config.Config, logger contractsvc.Logger) *ConsumerServiceImpl {
 	return &ConsumerServiceImpl{cfg: cfg, logger: logger}
 }
 
-// SetMQPublisher menginjeksi MQPublisher.
 func (s *ConsumerServiceImpl) SetMQPublisher(pub contractsvc.MQPublisher) { s.mqPublisher = pub }
 
-// SetSMBClient menginjeksi SMBClient.
 func (s *ConsumerServiceImpl) SetSMBClient(client contractsvc.SMBClient) { s.smbClient = client }
 
-// SetRetryConfig menginjeksi RetryConfig.
 func (s *ConsumerServiceImpl) SetRetryConfig(cfg *config.RetryConfig) { s.retryConfig = cfg }
 
-// SetTransactionLogger menginjeksi TransactionLogger.
 func (s *ConsumerServiceImpl) SetTransactionLogger(tl contractsvc.TransactionLogger) {
 	s.transactionLogger = tl
 }
 
-// Start memulai consumer loop dengan reconnect logic.
 func (s *ConsumerServiceImpl) Start(ctx context.Context) error {
 	backoff := time.Second
 	maxBackoff := 30 * time.Second
