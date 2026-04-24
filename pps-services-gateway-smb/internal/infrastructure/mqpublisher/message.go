@@ -1,5 +1,6 @@
 package mqpublisher
 
+// ProviderPublishData berisi data transaksi yang dipublikasikan ke downstream consumer.
 type ProviderPublishData struct {
 	MsgID                  int    `json:"msg_id"`
 	StatusToBe             string `json:"status_to_be"`
@@ -13,11 +14,14 @@ type ProviderPublishData struct {
 	QueueName              string `json:"queue_name"`
 }
 
+// ProviderPublishMessage adalah wrapper JSON yang dipublikasikan ke RabbitMQ.
+// Format: {"source": "PROVIDER", "data": {...}}
 type ProviderPublishMessage struct {
 	Source string              `json:"source"`
 	Data   ProviderPublishData `json:"data"`
 }
 
+// NewProviderPublishMessage membuat ProviderPublishMessage dengan source = "PROVIDER".
 func NewProviderPublishMessage(data ProviderPublishData) ProviderPublishMessage {
 	return ProviderPublishMessage{
 		Source: "PROVIDER",

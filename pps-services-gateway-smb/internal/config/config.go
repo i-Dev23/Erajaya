@@ -16,6 +16,7 @@ const (
 	defaultRetryWaitSeconds = 10
 )
 
+// Config stores application configuration loaded from environment variables.
 type Config struct {
 	RabbitMQURL string
 	QueueName   string
@@ -24,6 +25,7 @@ type Config struct {
 	PostgresDSN string
 }
 
+// SMBConfig stores SMB/Loket Bayar API client configuration.
 type SMBConfig struct {
 	BaseURL   string
 	PartnerID string
@@ -31,15 +33,18 @@ type SMBConfig struct {
 	Timeout   time.Duration
 }
 
+// RetryConfig stores retry configuration for check status operations.
 type RetryConfig struct {
 	MaxAttempts  int
 	WaitDuration time.Duration
 }
 
+// CallbackServerConfig stores HTTP server configuration.
 type CallbackServerConfig struct {
 	Port int
 }
 
+// Load reads required environment variables for consumer startup.
 func Load() (*Config, error) {
 	rabbitMQURL := strings.TrimSpace(os.Getenv("RABBITMQ_URL"))
 	queueName := strings.TrimSpace(os.Getenv("QUEUE_NAME_PROVIDER"))
@@ -76,6 +81,7 @@ func Load() (*Config, error) {
 	}, nil
 }
 
+// LoadSMB reads SMB/Loket Bayar API configuration from environment variables.
 func LoadSMB() (*SMBConfig, error) {
 	baseURL := strings.TrimSpace(os.Getenv("SMB_BASE_URL"))
 	partnerID := strings.TrimSpace(os.Getenv("SMB_PARTNER_ID"))
@@ -106,6 +112,7 @@ func LoadSMB() (*SMBConfig, error) {
 	}, nil
 }
 
+// LoadRetryConfig reads retry configuration from environment variables.
 func LoadRetryConfig() (*RetryConfig, error) {
 	maxAttempts := defaultRetryMaxAttempts
 	if v := strings.TrimSpace(os.Getenv("RETRY_MAX_ATTEMPTS")); v != "" {
@@ -127,6 +134,7 @@ func LoadRetryConfig() (*RetryConfig, error) {
 	}, nil
 }
 
+// LoadCallbackServer reads HTTP server configuration from environment variables.
 func LoadCallbackServer() (*CallbackServerConfig, error) {
 	portStr := strings.TrimSpace(os.Getenv("HTTP_PORT"))
 	if portStr == "" {

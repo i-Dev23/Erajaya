@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// Client adalah HTTP client untuk berkomunikasi dengan SMB/Loket Bayar API.
 type Client struct {
 	baseURL   string
 	partnerID string
@@ -15,14 +16,9 @@ type Client struct {
 	timeout   time.Duration
 	client    *http.Client
 	logger    *slog.Logger
-	apiLogger APILogger
 }
 
-// SetAPILogger sets the API logger for persisting API call logs.
-func (c *Client) SetAPILogger(l APILogger) {
-	c.apiLogger = l
-}
-
+// NewClient membuat instance baru SMB Client.
 func NewClient(baseURL, partnerID, secretKey string, timeout time.Duration, logger *slog.Logger) *Client {
 	return &Client{
 		baseURL:   baseURL,
@@ -36,12 +32,16 @@ func NewClient(baseURL, partnerID, secretKey string, timeout time.Duration, logg
 	}
 }
 
+// generateSignature menghasilkan MD5 signature: md5(partnerID + secretKey + refID).
 func (c *Client) generateSignature(refID string) string {
 	data := c.partnerID + c.secretKey + refID
 	hash := md5.Sum([]byte(data))
 	return hex.EncodeToString(hash[:])
 }
 
+// --- Request/Response structs untuk PLN Token ---
+
+// InquiryRequest adalah request body untuk inquiry PLN Token.
 type InquiryRequest struct {
 	PartnerID    string `json:"partner_id"`
 	ClientNumber string `json:"client_number"`
@@ -49,12 +49,14 @@ type InquiryRequest struct {
 	Sign         string `json:"sign"`
 }
 
+// InquiryResponse adalah response body dari inquiry PLN Token.
 type InquiryResponse struct {
-	ResponseCode string       `json:"response_code"`
-	Message      string       `json:"message"`
+	ResponseCode string  `json:"response_code"`
+	Message      string  `json:"message"`
 	Data         *InquiryData `json:"data,omitempty"`
 }
 
+// InquiryData berisi detail data inquiry PLN Token.
 type InquiryData struct {
 	RefID        string  `json:"ref_id"`
 	ClientNumber string  `json:"client_number"`
@@ -64,6 +66,7 @@ type InquiryData struct {
 	TotalAmount  float64 `json:"total_amount"`
 }
 
+// PaymentRequest adalah request body untuk payment PLN Token.
 type PaymentRequest struct {
 	PartnerID    string  `json:"partner_id"`
 	ClientNumber string  `json:"client_number"`
@@ -73,12 +76,14 @@ type PaymentRequest struct {
 	Sign         string  `json:"sign"`
 }
 
+// PaymentResponse adalah response body dari payment PLN Token.
 type PaymentResponse struct {
 	ResponseCode string       `json:"response_code"`
 	Message      string       `json:"message"`
 	Data         *PaymentData `json:"data,omitempty"`
 }
 
+// PaymentData berisi detail data payment PLN Token.
 type PaymentData struct {
 	RefID        string  `json:"ref_id"`
 	ClientNumber string  `json:"client_number"`
@@ -89,6 +94,7 @@ type PaymentData struct {
 	AdminFee     float64 `json:"admin_fee"`
 }
 
+// AdviceRequest adalah request body untuk advice PLN Token.
 type AdviceRequest struct {
 	PartnerID    string `json:"partner_id"`
 	ClientNumber string `json:"client_number"`
@@ -96,12 +102,14 @@ type AdviceRequest struct {
 	Sign         string `json:"sign"`
 }
 
+// AdviceResponse adalah response body dari advice PLN Token.
 type AdviceResponse struct {
 	ResponseCode string      `json:"response_code"`
 	Message      string      `json:"message"`
 	Data         *AdviceData `json:"data,omitempty"`
 }
 
+// AdviceData berisi detail data advice PLN Token.
 type AdviceData struct {
 	RefID        string  `json:"ref_id"`
 	ClientNumber string  `json:"client_number"`

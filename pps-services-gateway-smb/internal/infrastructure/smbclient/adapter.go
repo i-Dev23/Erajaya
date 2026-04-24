@@ -9,17 +9,21 @@ import (
 	"pps-services-gateway-smb/pkg/smb"
 )
 
+// Compile-time interface compliance check.
 var _ contractsvc.SMBClient = (*Adapter)(nil)
 
+// Adapter mengadaptasi smb.Client ke contractsvc.SMBClient.
 type Adapter struct {
 	client *smb.Client
 	logger contractsvc.Logger
 }
 
+// NewAdapter membuat instance baru Adapter.
 func NewAdapter(client *smb.Client, logger contractsvc.Logger) *Adapter {
 	return &Adapter{client: client, logger: logger}
 }
 
+// InquiryPLNToken melakukan inquiry PLN Token ke SMB API.
 func (a *Adapter) InquiryPLNToken(ctx context.Context, req contractsvc.PLNTokenInquiryRequest) (*contractsvc.PLNTokenInquiryResponse, error) {
 	resp, rawBody, err := a.client.InquiryPLNToken(ctx, req.ClientNumber, req.ProductCode)
 	if err != nil {
@@ -45,6 +49,7 @@ func (a *Adapter) InquiryPLNToken(ctx context.Context, req contractsvc.PLNTokenI
 	return result, nil
 }
 
+// PaymentPLNToken melakukan payment PLN Token ke SMB API.
 func (a *Adapter) PaymentPLNToken(ctx context.Context, req contractsvc.PLNTokenPaymentRequest) (*contractsvc.PLNTokenPaymentResponse, error) {
 	resp, rawBody, err := a.client.PaymentPLNToken(ctx, req.ClientNumber, req.ProductCode, req.RefID, req.TotalAmount)
 	if err != nil {
@@ -70,6 +75,7 @@ func (a *Adapter) PaymentPLNToken(ctx context.Context, req contractsvc.PLNTokenP
 	return result, nil
 }
 
+// AdvicePLNToken melakukan advice/check status PLN Token ke SMB API.
 func (a *Adapter) AdvicePLNToken(ctx context.Context, req contractsvc.PLNTokenAdviceRequest) (*contractsvc.PLNTokenAdviceResponse, error) {
 	resp, rawBody, err := a.client.AdvicePLNToken(ctx, req.ClientNumber, req.RefID)
 	if err != nil {
@@ -95,6 +101,7 @@ func (a *Adapter) AdvicePLNToken(ctx context.Context, req contractsvc.PLNTokenAd
 	return result, nil
 }
 
+// toJSON is a helper to marshal struct to json.RawMessage.
 func toJSON(v any) json.RawMessage {
 	b, err := json.Marshal(v)
 	if err != nil {

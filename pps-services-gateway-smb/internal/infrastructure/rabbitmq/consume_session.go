@@ -17,28 +17,36 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// ═══════════════════════════════════════════════════════════════
+// consumeSession — buka koneksi RabbitMQ, consume pesan 1 per 1
+// ═══════════════════════════════════════════════════════════════
 func (s *ConsumerServiceImpl) consumeSession(ctx context.Context) error {
+	// 1. Buka koneksi ke RabbitMQ
 	conn, err := amqp.Dial(s.cfg.RabbitMQURL)
 	if err != nil {
 		return fmt.Errorf("dial rabbitmq: %w", err)
 	}
 	defer conn.Close()
 
+	// 2. Buka channel
 	ch, err := conn.Channel()
 	if err != nil {
 		return fmt.Errorf("open channel: %w", err)
 	}
 	defer ch.Close()
 
+	// 3. Declare queue (idempotent — aman dipanggil berulang)
 	q, err := ch.QueueDeclare(s.cfg.QueueName, true, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("declare queue %s: %w", s.cfg.QueueName, err)
 	}
 
+	// 4. Set QoS = 1 → proses 1 pesan dulu, baru ambil berikutnya (FIFO)
 	if err := ch.Qos(1, 0, false); err != nil {
 		return fmt.Errorf("set qos: %w", err)
 	}
 
+	// 5. Mulai consume (auto-ack = false → manual ack)
 	deliveries, err := ch.Consume(q.Name, s.cfg.ConsumerTag, false, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("start consuming: %w", err)
@@ -46,6 +54,7 @@ func (s *ConsumerServiceImpl) consumeSession(ctx context.Context) error {
 
 	s.logger.Info("consumer started", "queue", s.cfg.QueueName, "consumer_tag", s.cfg.ConsumerTag)
 
+	// 6. Loop: ambil pesan satu per satu dari channel
 	var wg sync.WaitGroup
 	for {
 		select {
@@ -62,15 +71,21 @@ func (s *ConsumerServiceImpl) consumeSession(ctx context.Context) error {
 	}
 }
 
+// ═══════════════════════════════════════════════════════════════
+// processDelivery — proses 1 pesan dari RabbitMQ
+// ═══════════════════════════════════════════════════════════════
 func (s *ConsumerServiceImpl) processDelivery(ctx context.Context, d amqp.Delivery, wg *sync.WaitGroup) {
+	// Selalu ack setelah selesai (apapun hasilnya)
 	defer func() { _ = d.Ack(false) }()
 
+	// Parse JSON payload dari body pesan
 	var payload consumePayload
 	if err := json.Unmarshal(d.Body, &payload); err != nil {
 		s.logger.Error("failed to parse payload", "error", err, "body", string(d.Body))
 		return
 	}
 
+	// Derive msgID (bisa dari payload, atau dari header RabbitMQ)
 	msgID := payload.MsgID
 	if msgID == "" {
 		msgID = d.MessageId
@@ -79,6 +94,7 @@ func (s *ConsumerServiceImpl) processDelivery(ctx context.Context, d amqp.Delive
 		msgID = d.CorrelationId
 	}
 
+	// Derive queueName (bisa di-override dari payload)
 	queueName := payload.QueueName
 	if queueName == "" {
 		queueName = s.cfg.QueueName
@@ -92,6 +108,7 @@ func (s *ConsumerServiceImpl) processDelivery(ctx context.Context, d amqp.Delive
 		"amount", payload.Amount,
 		"mq_transaction", payload.MQTransaction)
 
+	// Route berdasarkan product_type
 	productType := strings.ToLower(strings.TrimSpace(payload.ProductType))
 	switch productType {
 	case "pln_token", "pln token", "pln-token", "plntoken":
@@ -103,9 +120,21 @@ func (s *ConsumerServiceImpl) processDelivery(ctx context.Context, d amqp.Delive
 	}
 }
 
+// ═══════════════════════════════════════════════════════════════
+// handlePLNToken — orchestrator: panggil usecase, log, publish
+//
+// Alur:
+//   1. Log transaksi ke Postgres (status PROCESSING)
+//   2. Panggil usecase.ProcessTransaction (inquiry → payment)
+//   3. Berdasarkan hasil:
+//      - SUCCESS → log SUCCESS, publish "F" + token
+//      - FAILED  → log FAILED, publish "C"
+//      - PENDING → jalankan retryAdvice di goroutine
+// ═══════════════════════════════════════════════════════════════
 func (s *ConsumerServiceImpl) handlePLNToken(ctx context.Context, payload consumePayload, msgID string, queueName string, wg *sync.WaitGroup) {
 	ourTrxID := util.GenerateTransactionID(payload.MID, msgID, timeNow())
 
+	// Log transaksi ke Postgres: status = PROCESSING
 	s.logInsertTransaction(ctx, contractsvc.TransactionRecord{
 		MsgID:         msgID,
 		OurTrxID:      ourTrxID,
@@ -118,6 +147,7 @@ func (s *ConsumerServiceImpl) handlePLNToken(ctx context.Context, payload consum
 		MQTransaction: payload.MQTransaction,
 	})
 
+	// Panggil usecase: inquiry → payment
 	uc := plntoken.NewUsecase(s.smbClient, s.retryConfig, s.logger)
 	result, _ := uc.ProcessTransaction(ctx, payload.ClientNumber, payload.ProductCode, msgID, payload.Amount)
 
@@ -148,6 +178,7 @@ func (s *ConsumerServiceImpl) handlePLNToken(ctx context.Context, payload consum
 		})
 
 	case "PENDING":
+		// Jalankan retry advice di goroutine terpisah (async)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -173,6 +204,10 @@ func (s *ConsumerServiceImpl) handlePLNToken(ctx context.Context, payload consum
 	}
 }
 
+// ═══════════════════════════════════════════════════════════════
+// publishToDownstream — kirim hasil ke downstream consumer
+// Format: {"source":"PROVIDER","data":{...}}
+// ═══════════════════════════════════════════════════════════════
 func (s *ConsumerServiceImpl) publishToDownstream(ctx context.Context, mqTransactionURL, queueName string, data mqpublisher.ProviderPublishData) {
 	if s.mqPublisher == nil {
 		s.logger.Warn("mqPublisher is nil, skipping downstream publish", "msg_id", data.MsgID)
@@ -198,6 +233,10 @@ func (s *ConsumerServiceImpl) publishToDownstream(ctx context.Context, mqTransac
 	s.logger.Info("published to downstream",
 		"msg_id", data.MsgID, "status_to_be", data.StatusToBe, "queue", queueName)
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Logging helpers — log ke Postgres (non-blocking)
+// ═══════════════════════════════════════════════════════════════
 
 func (s *ConsumerServiceImpl) logInsertTransaction(ctx context.Context, rec contractsvc.TransactionRecord) {
 	if s.transactionLogger == nil {
@@ -225,6 +264,10 @@ func (s *ConsumerServiceImpl) logInsertSyncResponse(ctx context.Context, rec con
 		s.logger.Error("failed to insert sync response", "error", err, "msg_id", rec.MsgID)
 	}
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Helper functions — parsing JSON payload
+// ═══════════════════════════════════════════════════════════════
 
 func getAny(m map[string]any, keys ...string) any {
 	if m == nil {
@@ -277,4 +320,5 @@ func parseMsgIDToInt(msgID string) int {
 	return n
 }
 
+// timeNow is a package-level function for testability.
 var timeNow = func() time.Time { return time.Now() }

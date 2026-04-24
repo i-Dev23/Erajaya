@@ -10,24 +10,28 @@ import (
 	"pps-services-gateway-smb/internal/util"
 )
 
+// Result merepresentasikan hasil akhir dari proses PLN Token.
 type Result struct {
-	Status         string
-	StatusToBe     string
-	Token          string
-	SerialNumber   string
-	Nominal        string
-	Message        string
+	Status        string // "SUCCESS", "FAILED", "PENDING"
+	StatusToBe    string // "F", "C", "S"
+	Token         string // Token PLN (jika sukses)
+	SerialNumber  string
+	Nominal       string
+	Message       string
 	ConversationID string
-	NeedRetry      bool
-	RefID          string
+	NeedRetry     bool   // true jika perlu retry advice (async)
+	RefID         string // ref_id dari inquiry, dipakai untuk advice
 }
 
+// Usecase berisi business logic untuk proses PLN Token.
+// Semua logic inquiry → payment → advice ada di sini.
 type Usecase struct {
 	smbClient   contractsvc.SMBClient
 	retryConfig *config.RetryConfig
 	logger      contractsvc.Logger
 }
 
+// NewUsecase membuat instance baru PLN Token Usecase.
 func NewUsecase(smbClient contractsvc.SMBClient, retryConfig *config.RetryConfig, logger contractsvc.Logger) *Usecase {
 	return &Usecase{
 		smbClient:   smbClient,
@@ -36,9 +40,14 @@ func NewUsecase(smbClient contractsvc.SMBClient, retryConfig *config.RetryConfig
 	}
 }
 
+// ProcessTransaction menjalankan alur lengkap PLN Token: inquiry → payment.
+// Jika payment pending, return NeedRetry=true dan caller harus panggil RetryAdvice secara async.
 func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productCode, msgID string, amount int) (*Result, error) {
 	ourTrxID := util.GenerateTransactionID("", msgID, time.Now())
 
+	// ──────────────────────────────────────────────
+	// STEP 1: INQUIRY — cek data pelanggan PLN
+	// ──────────────────────────────────────────────
 	u.logger.Info("step 1: inquiry PLN Token",
 		"msg_id", msgID,
 		"client_number", clientNumber)
@@ -59,6 +68,7 @@ func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productC
 		}, nil
 	}
 
+	// Cek response code inquiry
 	rcInquiry := util.ResolveRCPPS(inquiryResp.ResponseCode)
 	if rcInquiry != 0 {
 		u.logger.Error("inquiry PLN Token returned non-success",
@@ -73,6 +83,9 @@ func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productC
 		}, nil
 	}
 
+	// ──────────────────────────────────────────────
+	// STEP 2: PAYMENT — eksekusi pembelian token
+	// ──────────────────────────────────────────────
 	u.logger.Info("step 2: payment PLN Token",
 		"msg_id", msgID,
 		"ref_id", inquiryResp.RefID,
@@ -87,6 +100,7 @@ func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productC
 	})
 	if err != nil {
 		u.logger.Error("payment PLN Token failed (network/timeout)", "error", err, "msg_id", msgID)
+		// Payment error → perlu retry advice karena mungkin sudah terproses di sisi SMB
 		return &Result{
 			Status:         "PENDING",
 			StatusToBe:     "S",
@@ -101,7 +115,7 @@ func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productC
 	rcPayment := util.ResolveRCPPS(paymentResp.ResponseCode)
 
 	switch rcPayment {
-	case 0:
+	case 0: // ✅ SUKSES — token PLN didapat
 		u.logger.Info("payment PLN Token success",
 			"msg_id", msgID,
 			"token", paymentResp.Token)
@@ -115,7 +129,7 @@ func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productC
 			ConversationID: ourTrxID,
 		}, nil
 
-	case 1:
+	case 1: // ❌ GAGAL — transaksi ditolak
 		u.logger.Error("payment PLN Token failed",
 			"response_code", paymentResp.ResponseCode,
 			"msg_id", msgID)
@@ -127,7 +141,7 @@ func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productC
 			ConversationID: ourTrxID,
 		}, nil
 
-	case 9:
+	case 9: // ⏳ PENDING — perlu retry advice
 		u.logger.Warn("payment PLN Token pending, need advice retry",
 			"response_code", paymentResp.ResponseCode,
 			"msg_id", msgID)
@@ -142,6 +156,7 @@ func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productC
 		}, nil
 	}
 
+	// Fallback (seharusnya tidak pernah sampai sini)
 	return &Result{
 		Status:         "FAILED",
 		StatusToBe:     "C",
@@ -151,6 +166,8 @@ func (u *Usecase) ProcessTransaction(ctx context.Context, clientNumber, productC
 	}, nil
 }
 
+// RetryAdvice menjalankan retry advice/check status ke SMB API.
+// Dipanggil secara async (goroutine) jika ProcessTransaction return NeedRetry=true.
 func (u *Usecase) RetryAdvice(ctx context.Context, clientNumber, refID, msgID string, amount int) *Result {
 	ourTrxID := util.GenerateTransactionID("", msgID, time.Now())
 
@@ -165,6 +182,10 @@ func (u *Usecase) RetryAdvice(ctx context.Context, clientNumber, refID, msgID st
 		}
 	}
 
+	// ──────────────────────────────────────────────
+	// STEP 3: RETRY ADVICE — cek status transaksi
+	// Loop max N kali, interval M detik
+	// ──────────────────────────────────────────────
 	for attempt := 1; attempt <= u.retryConfig.MaxAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
@@ -191,13 +212,13 @@ func (u *Usecase) RetryAdvice(ctx context.Context, clientNumber, refID, msgID st
 		})
 		if err != nil {
 			u.logger.Error("advice PLN Token failed", "error", err, "msg_id", msgID, "attempt", attempt)
-			continue
+			continue // coba lagi
 		}
 
 		rcAdvice := util.ResolveRCPPS(adviceResp.ResponseCode)
 
 		switch rcAdvice {
-		case 0:
+		case 0: // ✅ SUKSES
 			u.logger.Info("advice PLN Token success", "msg_id", msgID, "token", adviceResp.Token)
 			return &Result{
 				Status:         "SUCCESS",
@@ -209,7 +230,7 @@ func (u *Usecase) RetryAdvice(ctx context.Context, clientNumber, refID, msgID st
 				ConversationID: ourTrxID,
 			}
 
-		case 1:
+		case 1: // ❌ GAGAL
 			u.logger.Error("advice PLN Token failed",
 				"response_code", adviceResp.ResponseCode,
 				"msg_id", msgID)
@@ -221,7 +242,7 @@ func (u *Usecase) RetryAdvice(ctx context.Context, clientNumber, refID, msgID st
 				ConversationID: ourTrxID,
 			}
 
-		case 9:
+		case 9: // ⏳ masih pending, lanjut retry
 			u.logger.Warn("advice still pending",
 				"attempt", attempt,
 				"msg_id", msgID)
@@ -229,6 +250,7 @@ func (u *Usecase) RetryAdvice(ctx context.Context, clientNumber, refID, msgID st
 		}
 	}
 
+	// Semua retry habis, masih pending → mark FAILED
 	u.logger.Warn("advice retry exhausted, marking as FAILED", "msg_id", msgID)
 	return &Result{
 		Status:         "FAILED",

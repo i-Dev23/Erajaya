@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// GenerateTransactionID menghasilkan ID transaksi unik berdasarkan mid, msgID, dan timestamp.
+// Format: SMB-{mid}-{msgID}-{timestamp}
 func GenerateTransactionID(mid, msgID string, t time.Time) string {
 	if mid == "" {
 		mid = "UNKNOWN"
